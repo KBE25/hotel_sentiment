@@ -3,17 +3,15 @@ import spacy
 import re
 import emoji
 from symspellpy import SymSpell, Verbosity
-import pkg_resources 
-import os 
-import sys 
-
-from sklearn.feature_extraction.text import TfidfVectorizer
+import pkg_resources
+import os
+import sys
 import multiprocessing as mp
 import numpy as np
-from tqdm.auto import tqdm 
+from tqdm.auto import tqdm
 
 
-# --- GLOBAL VARIABLES FOR WORKER PROCESSES ---
+# GLOBAL VARIABLES FOR WORKER PROCESSES
 # These variables will be initialized ONCE per worker process by the 'worker_initializer' function.
 # This is the most robust way to handle heavy objects like spaCy models with multiprocessing.
 global_nlp = None
@@ -21,7 +19,7 @@ global_sym_spell = None
 global_custom_stop_words = ["hotel", "room", "stay", "guest", "place", "reviews", "review"]
 
 
-# --- Initializer Function for Multiprocessing Pool ---
+# Initializer Function for Multiprocessing Pool
 # This function runs once in each child process when it starts up.
 def worker_initializer():
     global global_nlp, global_sym_spell # Declare that we are modifying the global variables
@@ -29,7 +27,6 @@ def worker_initializer():
     # Initialize spaCy model in each worker process
     try:
         global_nlp = spacy.load("en_core_web_sm") # Load with all components enabled for flexibility
-        # print(f"[{os.getpid()}] spaCy 'en_core_web_sm' model loaded successfully.") # Optional debug print
     except OSError:
         # This part ideally won't run if spacy.cli.download was run upfront
         # but provides a fallback for individual workers.
@@ -52,30 +49,35 @@ def worker_initializer():
             print(f"[{os.getpid()}] SymSpell dictionary file not found at expected path in worker. Spell correction may not work.")
     except Exception as e:
         print(f"[{os.getpid()}] Error loading SymSpell dictionary in worker: {e}. Spell correction may not work.")
-    # print(f"[{os.getpid()}] Worker initialization complete.") # Optional debug print
 
 
-# --- Preprocessing Function ---
+# Preprocessing Function
 # This function performs all the text cleaning and transformation steps on a single text input.
 # It uses the globally initialized 'global_nlp' and 'global_sym_spell' objects.
 def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
     # Access the globally initialized objects within the worker process's scope
-    global global_nlp, global_sym_spell 
+    global global_nlp, global_sym_spell
 
     if not isinstance(text, str):
         return "" # Handle non-string inputs gracefully
 
-    # --- Core Preprocessing Steps ---
+    # Core Preprocessing Steps
     text = text.lower() # 1. Lowercasing
     text = re.sub(r'http\S+|www\S+|https\S+', '', text, flags=re.MULTILINE) # 2. Remove URLs
     text = re.sub(r'<.*?>', '', text) # 2. Remove HTML tags
     
     text = emoji.demojize(text) # 3. Emoji/Emoticon Conversion
-    text = re.sub(r':([a-zA-Z0-9_]+):', r'\1', text) # Clean demojized text (remove colons)
+    text = re.sub(r':([a-zA-Z0-9_]+):', r'\1', text) # Clean demojized text
     text = text.replace('_', ' ') # Replace underscores in demojized text (e.g., smiling face)
 
+    # Robustly remove numerical tokens and common number-like phrases
+    # It replaces them with a single space to avoid merging words.
+    text = re.sub(r'\b\d+(\.\d+)?(min|h|st|nd|rd|th)?\b', ' ', text)
+    # Also remove any lone digits that might be left
+    text = re.sub(r'\b\d+\b', ' ', text)
+
     # Process text with spaCy (uses the global_nlp object initialized in the worker)
-    doc = global_nlp(text) 
+    doc = global_nlp(text)
 
     # Prepare a list of lemmas for potential negation handling
     temp_lemmas_for_negation = [token.lemma_ for token in doc]
@@ -87,10 +89,11 @@ def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
             for j in range(i + 1, min(i + 4, len(doc))): # Look ahead 1 to 3 words
                 next_token = doc[j]
                 # Apply _NEG suffix if it's not punctuation, a stop word, or a number
+                # The regex above should handle most numbers, but this spaCy check remains for robustness.
                 if not next_token.is_punct and not next_token.is_stop and not next_token.like_num:
                     temp_lemmas_for_negation[j] = next_token.lemma_ + "_NEG"
                 else:
-                    break # Stop if a boundary is hit
+                    break
     
     # 5. Final Filtering and Spell Correction
     lemmas = []
@@ -118,18 +121,16 @@ def parallelize_series_with_tqdm(series, func_to_apply, n_cores=None, **func_kwa
     if n_cores is None:
         n_cores = mp.cpu_count()
 
-    # Prepare arguments for pool.starmap: each item is a tuple (text_item, apply_spell_correction_bool)
     items_with_args = [(item, func_kwargs.get('apply_spell_correction', False)) for item in series]
 
-    results = [] # To collect results from all processes
-    # Use multiprocessing.Pool for parallel execution, with the initializer function
-    with mp.Pool(n_cores, initializer=worker_initializer) as pool: # <--- Pass initializer here!
-        # pool.starmap applies 'func_to_apply' to each tuple in 'items_with_args'
+    results = []
+    with mp.Pool(n_cores, initializer=worker_initializer) as pool:
         processed_items_iterator = pool.starmap(func_to_apply, items_with_args, chunksize=100)
 
-        # Wrap the iterator with tqdm for the progress bar display
         for result in tqdm(processed_items_iterator, total=len(series), desc=f"Processing '{series.name}'"):
             results.append(result)
             
-    # Convert the collected list of results back to a pandas Series, preserving original index and name.
     return pd.Series(results, index=series.index, name=series.name)
+
+# Note: The `if __name__ == '__main__':` block should NOT be in this helper file.
+# It should be in your main Colab notebook or script that imports these functions.
