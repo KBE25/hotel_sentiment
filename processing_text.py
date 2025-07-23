@@ -16,7 +16,10 @@ from tqdm.auto import tqdm
 # This is the most robust way to handle heavy objects like spaCy models with multiprocessing.
 global_nlp = None
 global_sym_spell = None
-global_custom_stop_words = ["hotel", "room", "stay", "guest", "place", "reviews", "review"]
+global_custom_stop_words = ["hotel", "room", "stay", "guest", "place", "reviews", "review",
+                            "night", "trip", "submit", "mobile", "leisure", "double", "couple",
+                            "traveller", "solo", "business", "day", "week", "family", "friend",
+                            "time", "year", "people", "number"]
 
 
 # Initializer Function for Multiprocessing Pool
