@@ -19,7 +19,7 @@ global_sym_spell = None
 global_custom_stop_words = ["hotel", "room", "stay", "guest", "place", "reviews", "review",
                             "night", "trip", "submit", "mobile", "leisure", "double", "couple",
                             "traveller", "solo", "business", "day", "week", "family", "friend",
-                            "time", "year", "people", "number"]
+                            "time", "year", "people", "number"] # Expanded custom stop words
 
 
 # Initializer Function for Multiprocessing Pool
@@ -40,6 +40,13 @@ def worker_initializer():
     # Add custom stop words to this worker's nlp vocab
     for word in global_custom_stop_words:
         global_nlp.vocab[word].is_stop = True
+
+    # --- ADDITION FOR 'of' STOP WORD ---
+    # Manually ensure 'of' is marked as a stop word, as some spaCy versions/pipelines
+    # might not flag it if it has an unusual part-of-speech or context.
+    # Being explicit ensures it's consistently treated as a stop word.
+    global_nlp.vocab["of"].is_stop = True
+    # --- END ADDITION ---
 
     # Initialize SymSpell in each worker process
     global_sym_spell = SymSpell(max_dictionary_edit_distance=2, prefix_length=7)
@@ -101,7 +108,7 @@ def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
     # 5. Final Filtering and Spell Correction
     lemmas = []
     for i, token in enumerate(doc):
-        current_lemma = temp_lemmas_for_negation[i] 
+        current_lemma = temp_lemmas_for_negation[i]
 
         if apply_spell_correction and current_lemma.strip() and current_lemma not in negation_tokens:
             if re.fullmatch(r'[a-zA-Z]+', current_lemma): # Ensure it's purely alphabetic for correction
@@ -112,6 +119,7 @@ def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
                     current_lemma = corrected_word
 
         # Filter out punctuation, numbers, and stopwords (using spaCy's flags and custom list)
+        # This line remains the same; the change is in how 'token.is_stop' is determined for 'of'.
         if not token.is_punct and not token.like_num and not token.is_stop and len(current_lemma.strip()) > 1:
             if current_lemma.endswith("_NEG") or not token.is_stop: # Keep negated words even if original was a stop word
                 lemmas.append(current_lemma)
@@ -134,6 +142,3 @@ def parallelize_series_with_tqdm(series, func_to_apply, n_cores=None, **func_kwa
             results.append(result)
             
     return pd.Series(results, index=series.index, name=series.name)
-
-# Note: The `if __name__ == '__main__':` block should NOT be in this helper file.
-# It should be in your main Colab notebook or script that imports these functions.
