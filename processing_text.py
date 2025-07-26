@@ -81,9 +81,7 @@ def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
     text = text.replace('_', ' ') # Replace underscores in demojized text (e.g., smiling face)
 
     # Robustly remove numerical tokens and common number-like phrases
-    # It replaces them with a single space to avoid merging words.
     text = re.sub(r'\b\d+(\.\d+)?(min|h|st|nd|rd|th)?\b', ' ', text)
-    # Also remove any lone digits that might be left
     text = re.sub(r'\b\d+\b', ' ', text)
 
     # Process text with spaCy (uses the global_nlp object initialized in the worker)
@@ -94,25 +92,34 @@ def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
     
     # 4. Negation Handling
     negation_tokens = {"not", "no", "n't", "never", "hardly", "barely", "scarcely", "seldom"}
+    # ADDITION: Define conjunctions that break negation scope
+    conjunction_breakers = {"but", "however", "although", "though", "yet"} 
+    
     for i, token in enumerate(doc):
         if token.lemma_ in negation_tokens:
             for j in range(i + 1, min(i + 4, len(doc))): # Look ahead 1 to 3 words
                 next_token = doc[j]
+                
+                # If a conjunction that breaks negation scope is found, stop applying negation
+                if next_token.lemma_ in conjunction_breakers:
+                    break 
+                
                 # Apply _NEG suffix if it's not punctuation, a stop word, or a number
-                # The regex above should handle most numbers, but this spaCy check remains for robustness.
                 if not next_token.is_punct and not next_token.is_stop and not next_token.like_num:
                     temp_lemmas_for_negation[j] = next_token.lemma_ + "_NEG"
                 else:
-                    break
-    
+                    # If we hit punctuation, a stop word (that's not negated), or a number,
+                    # assume the negation scope ends here.
+                    break 
+            
     # 5. Final Filtering and Spell Correction
     lemmas = []
     for i, token in enumerate(doc):
         current_lemma = temp_lemmas_for_negation[i]
 
+        # Only apply spell correction if the flag is True and it's a valid word to correct
         if apply_spell_correction and current_lemma.strip() and current_lemma not in negation_tokens:
             if re.fullmatch(r'[a-zA-Z]+', current_lemma): # Ensure it's purely alphabetic for correction
-                # SymSpell lookup (uses the global_sym_spell object initialized in the worker)
                 suggestions = global_sym_spell.lookup(current_lemma, Verbosity.CLOSEST, max_edit_distance=2)
                 if suggestions:
                     corrected_word = suggestions[0].term
@@ -120,8 +127,10 @@ def preprocess_text_enhanced_spacy(text, apply_spell_correction=False):
 
         # Filter out punctuation, numbers, and stopwords (using spaCy's flags and custom list)
         # This line remains the same; the change is in how 'token.is_stop' is determined for 'of'.
-        if not token.is_punct and not token.like_num and not token.is_stop and len(current_lemma.strip()) > 1:
-            if current_lemma.endswith("_NEG") or not token.is_stop: # Keep negated words even if original was a stop word
+        # Keep negated words even if original was a stop word, and only keep lemmas longer than 1 char.
+        if not token.is_punct and not token.like_num and len(current_lemma.strip()) > 1:
+            # Explicitly check if it's a stop word or if it's a negated term (which we want to keep)
+            if current_lemma.endswith("_NEG") or not token.is_stop: 
                 lemmas.append(current_lemma)
 
     return " ".join(lemmas).strip()
@@ -132,10 +141,12 @@ def parallelize_series_with_tqdm(series, func_to_apply, n_cores=None, **func_kwa
     if n_cores is None:
         n_cores = mp.cpu_count()
 
+    # Pass apply_spell_correction through func_kwargs to the worker
     items_with_args = [(item, func_kwargs.get('apply_spell_correction', False)) for item in series]
 
     results = []
     with mp.Pool(n_cores, initializer=worker_initializer) as pool:
+        # Use starmap to pass multiple arguments (text, apply_spell_correction)
         processed_items_iterator = pool.starmap(func_to_apply, items_with_args, chunksize=100)
 
         for result in tqdm(processed_items_iterator, total=len(series), desc=f"Processing '{series.name}'"):
