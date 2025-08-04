@@ -2,10 +2,9 @@
 
 [Credit: altexsoft.com](https://www.altexsoft.com/blog/sentiment-analysis-hotel-reviews/)
 
-# Model for Pneumonia Diagnosis
+# Hotel Sentiment Analysis
 
 **Author: <a href="https://www.linkedin.com/in/karina-basto-eyzaguirre-203a0445/"> Karina Basto-Eyzaguirre</a>**
-
 
 ## Business Understanding
 The modern hospitality industry is driven by customer experience, yet the overwhelming volume of unstructured online reviews makes it impossible for management to manually identify and respond to critical feedback in real-time. This project addresses that challenge by automating the initial screening of guest reviews, freeing up staff and enabling a proactive approach to reputation management. Our model's goal is to rapidly convert a high volume of raw feedback into actionable intelligence, ultimately leading to faster service improvements and enhanced customer loyalty.
@@ -46,11 +45,12 @@ The business information can also be found in <a href="">this presentation. </a>
 For additional info, contact Karina Basto-Eyzaguirre at karinabastoe@gmail.com.
 
 ### Repository Structure
-- <a href=""> image </a>
+- <a href="https://github.com/KBE25/hotel_sentiment/tree/main/image"> image </a>
 - <a href="https://github.com/KBE25/hotel_sentiment/blob/main/.gitignore"> .gitignore </a>
 - <a href="https://github.com/KBE25/hotel_sentiment/blob/main/README.md"> README.md </a>
 - <a href="https://github.com/KBE25/hotel_sentiment/blob/main/notebook.ipynb"> notebook.ipynb </a>
 - <a href=""> presentation </a>
+- <a href="https://github.com/KBE25/hotel_sentiment/blob/main/processing_text.py"> helper file: processing_text.py </a>
 
 ### Resources
 - <a href="https://www.deloitte.com/us/en/Industries/consumer/articles/hotel-guest-experience-strategy.html
